@@ -17,6 +17,7 @@ public:
 	int FixedCellCount(void) const;
 	int InfeasibleCellCount(void) const;
 	void SetCell(int i, const ValueSet &c );
+	void ForceSetCell(int i, const ValueSet &c );
 	const ValueSet &GetCell(int i) const;
 
 	int GetNumUnits() const;

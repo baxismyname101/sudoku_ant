@@ -1,4 +1,5 @@
 #include "sudokuantsystem.h"
+#include "simulatedannealing.h"
 #include <iostream>
 
 void SudokuAntSystem::InitPheromone(int nNumCells, int valuesPerCell )
@@ -78,8 +79,8 @@ bool SudokuAntSystem::Solve(const Board& puzzle, float maxTime )
 			}
 		}
 		float pherToAdd = PherAdd(bestVal);
-		Board solution = antList[iBest]->GetSolution();
-		cout << solution.AsString(true) + "\n\n*****************************\n";
+
+		
 
 		if (pherToAdd > bestPher)
 		{
@@ -91,6 +92,15 @@ bool SudokuAntSystem::Solve(const Board& puzzle, float maxTime )
 			{
 				solved = true;
 				solTime = solutionTimer.Elapsed();
+			}
+			else{
+				SudokuSA sa(antList[iBest]->GetSolution());
+				int cost = sa.Anneal();
+				if (cost == 0){
+					bestSol.Copy(sa.GetSolution());
+					solved = true;
+					solTime = solutionTimer.Elapsed();
+				}
 			}
 		}
 		UpdatePheromone();
