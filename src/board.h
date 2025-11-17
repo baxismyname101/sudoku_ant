@@ -19,6 +19,7 @@ public:
 	void SetCell(int i, const ValueSet &c );
 	void ForceSetCell(int i, const ValueSet &c );
 	const ValueSet &GetCell(int i) const;
+	
 
 	int GetNumUnits() const;
 	void Copy(const Board &other);
@@ -31,6 +32,11 @@ public:
 	int RowForCell(int iCell) const;
 	int ColForCell(int iCell) const;
 	int BoxForCell(int iCell) const;
+
+	//NEW
+	std::vector<bool> isClue;
+	bool IsClue(int i) const;
+	bool IsEmpty(int cell);
 
 
 private:

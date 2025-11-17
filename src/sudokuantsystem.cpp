@@ -93,21 +93,21 @@ bool SudokuAntSystem::Solve(const Board& puzzle, float maxTime )
 				solved = true;
 				solTime = solutionTimer.Elapsed();
 			}
-			else{
-				SudokuSA sa(antList[iBest]->GetSolution());
-				int cost = sa.Anneal();
-				if (cost == 0){
-					bestSol.Copy(sa.GetSolution());
-					solved = true;
-					solTime = solutionTimer.Elapsed();
-				}
+		}
+		if ((iter % 100) == 0){
+			SudokuSA sa(bestSol);
+			int cost = sa.Anneal();
+			bestSol.Copy(sa.GetSolution());
+			if (cost == 0){
+				solved = true;
+				solTime = solutionTimer.Elapsed();
 			}
 		}
 		UpdatePheromone();
 		bestPher *= (1.0f - bestEvap);
 		++iter;
 		// check timer every 100 iterations
-		if ((iter % 100) == 0)
+		if ((iter % 1000) == 0)
 		{
 			float elapsed = solutionTimer.Elapsed();
 			if ( elapsed > maxTime)

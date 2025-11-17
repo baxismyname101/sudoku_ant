@@ -128,6 +128,7 @@ int main( int argc, char *argv[] )
 		if ( !success )
 		{
 			cout << "failed in time " << solTime << endl;
+			
 		}
 		else
 		{
@@ -137,4 +138,5 @@ int main( int argc, char *argv[] )
 			cout << "solved in " << solTime << endl;
 		}
 	}
+	return int(success);
 }

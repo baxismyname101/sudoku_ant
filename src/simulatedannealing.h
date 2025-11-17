@@ -17,5 +17,6 @@ public:
     Board GetSolution(){return sol;}
 private:
     int TryRandomSwap();
+    void CleanDuplicates();
     
 }; 

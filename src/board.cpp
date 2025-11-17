@@ -40,6 +40,7 @@ Board::Board(const string &puzzleString)
 	numCells = numUnits * numUnits;
 	
 	cells = new ValueSet[numCells];
+	isClue.resize(numCells, false);   // <-- initialize clue tracking
 
 	int maxVal = numUnits;
 
@@ -75,6 +76,10 @@ Board::Board(const string &puzzleString)
 				value = 1+(int)(puzzleString[i] - 'a');
 			}
 			SetCell( i, ValueSet(maxVal, (int64_t)1 << (value-1) ));
+			
+			
+
+			isClue[i] = true;
 		}
 	}
 }
@@ -100,6 +105,7 @@ void Board::Copy(const Board& other)
 
 	numFixedCells = other.FixedCellCount();
 	numInfeasible = other.InfeasibleCellCount();
+	isClue = other.isClue;
 }
 
 Board::~Board()
@@ -304,38 +310,6 @@ void Board::SetCell(int i, const ValueSet &c )
 	}
 }
 
-void Board::ForceSetCell(int i, const ValueSet &c)
-{
-    // Directly set the cell value, even if it's fixed
-    cells[i] = c;
-
-    // Update bookkeeping if needed
-    if (!cells[i].Fixed()) 
-        ++numFixedCells;
-
-    // Propagate constraints like in SetCell
-    int iBox = BoxForCell(i);
-    int iCol = ColForCell(i);
-    int iRow = RowForCell(i);
-
-    for (int j = 0; j < numUnits; j++)
-    {
-        int k;
-
-        k = BoxCell(iBox, j);
-        if (k != i)
-            ConstrainCell(k);
-
-        k = ColCell(iCol, j);
-        if (k != i)
-            ConstrainCell(k);
-
-        k = RowCell(iRow, j);
-        if (k != i)
-            ConstrainCell(k);
-    }
-}
-
 const ValueSet& Board::GetCell(int i) const
 {
 	return cells[i];
@@ -404,5 +378,48 @@ bool Board::CheckSolution(const Board& other) const
 	}
 
 	return isSolution && isConsistent;
+}
+
+//NEW
+
+void Board::ForceSetCell(int i, const ValueSet &c)
+{
+    // Directly set the cell value, even if it's fixed
+    cells[i] = c;
+
+    // Update bookkeeping if needed
+    if (!cells[i].Fixed()) 
+        ++numFixedCells;
+
+    // Propagate constraints like in SetCell
+    int iBox = BoxForCell(i);
+    int iCol = ColForCell(i);
+    int iRow = RowForCell(i);
+
+    for (int j = 0; j < numUnits; j++)
+    {
+        int k;
+
+        k = BoxCell(iBox, j);
+        if (k != i)
+            ConstrainCell(k);
+
+        k = ColCell(iCol, j);
+        if (k != i)
+            ConstrainCell(k);
+
+        k = RowCell(iRow, j);
+        if (k != i)
+            ConstrainCell(k);
+    }
+}
+
+bool Board::IsClue(int i) const
+{
+	return isClue.at(i);
+}
+
+bool Board::IsEmpty(int cell){
+	return cells[cell].Empty();
 }
 

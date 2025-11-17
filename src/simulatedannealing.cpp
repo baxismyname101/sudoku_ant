@@ -9,14 +9,20 @@
 int SudokuSA::Anneal()
 {
     FillEmptyCells();
-//    cout << "\n" << sol.AsString(true);
-    double coolingRate = 0.999;
-    double stoppingTemp = 0.0000000001;
+    // cout << "\n" << sol.AsString(true);
+    double coolingRate = 0.995;
+    double stoppingTemp = 0.0001;
     double temp = 1;
     int currentCost = ComputeCost();
     int worst = 0;
     int moves = 0;
     int cycles = 0;
+
+    // cout << to_string(currentCost) + "\n";
+
+    if (currentCost == 0){
+        return currentCost;
+    }
     
     
     bestSol.Copy(sol);
@@ -38,6 +44,10 @@ int SudokuSA::Anneal()
             if (currentCost < bestCost){
                 bestSol.Copy(sol);
                 bestCost = currentCost;
+                if (currentCost == 0){
+                    cout << "\n" << sol.AsString(true);
+                    return 0;
+                }
             }
             
         }
@@ -75,6 +85,7 @@ int SudokuSA::Anneal()
     //cout << "\n******************\n";
 
     // abort();
+    CleanDuplicates();
     return bestCost;
     
 }
@@ -134,119 +145,249 @@ int SudokuSA::ComputeCost()
 
 void SudokuSA::FillEmptyCells()
 {
-    int numUnits = sol.GetNumUnits();   // e.g., 25
-    int numCells = sol.CellCount();     // e.g., 625
+    int numCells = sol.CellCount();
+    int numUnits = sol.GetNumUnits();      // e.g., 16 for 16x16
+    int blockSize = numUnits;              // number of cells per block
+    int numBlocks = numCells / blockSize;  // total number of blocks
 
-    // Step 1: Count how many times each number already appears in fixed cells
-    std::vector<int> count(numUnits, 0);
-    for (int i = 0; i < numCells; i++)
-    {
-        const ValueSet &cell = sol.GetCell(i);
-        if (cell.Fixed())
-        {
-            int valIndex = cell.Index(); // 0-based index
-            if (valIndex >= 0 && valIndex < numUnits)
-                count[valIndex]++;
-        }
-    }
-
-    // Step 2: Create a pool of values needed to reach exactly numUnits occurrences for each number
-    std::vector<int> pool;
-    pool.reserve(numCells);
-
-    for (int n = 0; n < numUnits; n++)
-    {
-        int remaining = numUnits - count[n];
-        if (remaining < 0)
-            remaining = 0; // just in case of overfilled numbers
-        for (int k = 0; k < remaining; k++)
-            pool.push_back(n);
-    }
-
-    // Step 3: Shuffle the pool
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::shuffle(pool.begin(), pool.end(), gen);
 
-    // Step 4: Fill empty cells from the pool
-    int poolIndex = 0;
-    for (int i = 0; i < numCells; i++)
+    // For each block
+    for (int block = 0; block < numBlocks; block++)
     {
-        const ValueSet &cell = sol.GetCell(i);
-        if (!cell.Fixed())
+        // Track which numbers are already present in fixed cells of this block
+        std::vector<bool> used(numUnits, false);
+        std::vector<int> emptyCells; // store indices of non-fixed cells
+
+        // Scan the block
+        for (int pos = 0; pos < numUnits; pos++)
         {
-            if (poolIndex < (int)pool.size())
+            int cellIndex = sol.BoxCell(block, pos);
+            if (!sol.IsEmpty(cellIndex))
             {
-                int valIndex = pool[poolIndex++];
-                // Force set directly to ensure each number appears numUnits times overall
-                sol.ForceSetCell(i, ValueSet(numUnits, (int64_t)1 << valIndex));
+                
+                int val = sol.GetCell(cellIndex).Index();
+                if (val >= 0 && val < numUnits)
+                    used[val] = true;
             }
             else
             {
-                // Safety fallback (shouldn’t happen)
-                int valIndex = i % numUnits;
-                sol.ForceSetCell(i, ValueSet(numUnits, (int64_t)1 << valIndex));
+                emptyCells.push_back(cellIndex);
             }
+        }
+
+        // Build missing numbers for this block
+        std::vector<int> missing;
+        missing.reserve(emptyCells.size());
+        for (int n = 0; n < numUnits; n++)
+        {
+            if (!used[n])
+                missing.push_back(n);
+        }
+
+        // Shuffle missing numbers
+        std::shuffle(missing.begin(), missing.end(), gen);
+
+        // Fill only empty (non-fixed) cells
+        for (size_t i = 0; i < emptyCells.size(); i++)
+        {
+            int cellIndex = emptyCells[i];
+            int value = missing[i];
+            sol.ForceSetCell(cellIndex, ValueSet(numUnits, (int64_t)1 << value));
         }
     }
 }
 
 
+
+
 int SudokuSA::TryRandomSwap()
 {
     int numCells = sol.CellCount();
-    int numUnits = sol.GetNumUnits();
+    int numUnits = sol.GetNumUnits();      
     int oldCost = ComputeCost();
 
-    // cout << "\n" << sol.AsString(true)
-    //      << "\n\n*****************************\n";
-
-    // Get list of non-fixed cells (for now all cells)
     std::vector<int> nonFixedIndices;
+    nonFixedIndices.reserve(numCells);
+
+    // Collect only non-fixed cells
     for (int i = 0; i < numCells; i++)
     {
-        if (true) // Replace with !sol.IsFixed(i) if applicable
+
+        if (!sol.IsClue(i))   // <-- fixed cells are not allowed to move
             nonFixedIndices.push_back(i);
     }
 
+    if (nonFixedIndices.size() < 2)
+        return oldCost; // nothing to swap
+
     // Random engine
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dist(0, nonFixedIndices.size() - 1);
+    static std::mt19937 gen(std::random_device{}());
+    std::uniform_int_distribution<> dist1(0, nonFixedIndices.size() - 1);
 
-    // Pick two random indices to swap
-    int idx1 = nonFixedIndices[dist(gen)];
-    int idx2 = nonFixedIndices[dist(gen)];
-    while (idx1 == idx2)
-        idx2 = nonFixedIndices[dist(gen)];
+    // Pick first random non-fixed cell
+    int idx1 = nonFixedIndices[dist1(gen)];
 
-    // Compute their (row, column)
-    int size = static_cast<int>(sqrt(numCells)); // e.g. 25 for 25×25 Sudoku
-    int row1 = idx1 / size + 1;
-    int col1 = idx1 % size + 1;
-    int row2 = idx2 / size + 1;
-    int col2 = idx2 % size + 1;
+    // Find its block
+    int block = sol.BoxForCell(idx1);
 
-    // Get their current values
+    // Collect all non-fixed cells in the same block
+    std::vector<int> sameBlock;
+    for (int cell : nonFixedIndices)
+    {
+        if (sol.BoxForCell(cell) == block && cell != idx1)
+            sameBlock.push_back(cell);
+    }
+
+    if (sameBlock.empty())
+        return oldCost; // no valid swap partner in block
+
+    // Pick second candidate from same block
+    std::uniform_int_distribution<> dist2(0, sameBlock.size() - 1);
+    int idx2 = sameBlock[dist2(gen)];
+
+    // Swap values
     ValueSet cell1 = sol.GetCell(idx1);
     ValueSet cell2 = sol.GetCell(idx2);
 
-    // cout << "\nSwapping:"
-    //      << " Cell(" << row1 << "," << col1 << ") = " << cell1.Index() + 1
-    //      << "  <->  "
-    //      << "Cell(" << row2 << "," << col2 << ") = " << cell2.Index() + 1
-    //      << "\n";
-
-    // --- Perform swap ---
     sol.ForceSetCell(idx1, cell2);
     sol.ForceSetCell(idx2, cell1);
 
-    // Compute new cost
-    int newCost = ComputeCost();
+    return ComputeCost();
+}
 
-    // cout << "\n" << sol.AsString(true)
-    //      << "\n\n*****************************\n";
+void SudokuSA::CleanDuplicates()
+{
+    int numUnits = sol.GetNumUnits();
+    int numCells = sol.CellCount();
 
-    // --- Return new cost (no revert logic yet) ---
-    return newCost;
+    // conflictCount[i] = number of duplicate conflicts the cell participates in
+    std::vector<int> conflictCount(numCells, 0);
+
+    // --- Count conflicts in rows ---
+    for (int row = 0; row < numUnits; row++)
+    {
+        std::unordered_map<int, std::vector<int>> positions;
+
+        for (int col = 0; col < numUnits; col++)
+        {
+            int idx = sol.RowCell(row, col);
+            const ValueSet& cell = sol.GetCell(idx);
+
+            if (cell.Fixed())
+                positions[cell.Index()].push_back(idx);
+        }
+
+        // Any number with >1 occurrences is a duplicate
+        for (auto& p : positions)
+        {
+            if (p.second.size() > 1)
+            {
+                for (int idx : p.second)
+                    conflictCount[idx]++;
+            }
+        }
+    }
+
+    // --- Count conflicts in columns ---
+    for (int col = 0; col < numUnits; col++)
+    {
+        std::unordered_map<int, std::vector<int>> positions;
+
+        for (int row = 0; row < numUnits; row++)
+        {
+            int idx = sol.ColCell(col, row);
+            const ValueSet& cell = sol.GetCell(idx);
+
+            if (cell.Fixed())
+                positions[cell.Index()].push_back(idx);
+        }
+
+        // duplicates → increment conflict counts
+        for (auto& p : positions)
+        {
+            if (p.second.size() > 1)
+            {
+                for (int idx : p.second)
+                    conflictCount[idx]++;
+            }
+        }
+    }
+
+    // --- Now remove one cell among duplicates (the worst one) ---
+
+    // Rows first
+    for (int row = 0; row < numUnits; row++)
+    {
+        std::unordered_map<int, std::vector<int>> positions;
+
+        for (int col = 0; col < numUnits; col++)
+        {
+            int idx = sol.RowCell(row, col);
+            const ValueSet& cell = sol.GetCell(idx);
+
+            if (cell.Fixed())
+                positions[cell.Index()].push_back(idx);
+        }
+
+        for (auto& p : positions)
+        {
+            auto& duplicates = p.second;
+            if (duplicates.size() <= 1)
+                continue;
+
+            // Pick the duplicate with highest conflict count
+            int worstIdx = duplicates[0];
+            int worstScore = conflictCount[worstIdx];
+
+            for (int idx : duplicates)
+            {
+                if (conflictCount[idx] > worstScore)
+                {
+                    worstIdx = idx;
+                    worstScore = conflictCount[idx];
+                }
+            }
+
+            // Remove the worst duplicate (only one removed)
+            sol.ForceSetCell(worstIdx, ValueSet(numUnits, 0));
+        }
+    }
+
+    // Columns next
+    for (int col = 0; col < numUnits; col++)
+    {
+        std::unordered_map<int, std::vector<int>> positions;
+
+        for (int row = 0; row < numUnits; row++)
+        {
+            int idx = sol.ColCell(col, row);
+            const ValueSet& cell = sol.GetCell(idx);
+
+            if (cell.Fixed())
+                positions[cell.Index()].push_back(idx);
+        }
+
+        for (auto& p : positions)
+        {
+            auto& duplicates = p.second;
+            if (duplicates.size() <= 1)
+                continue;
+
+            int worstIdx = duplicates[0];
+            int worstScore = conflictCount[worstIdx];
+
+            for (int idx : duplicates)
+            {
+                if (conflictCount[idx] > worstScore)
+                {
+                    worstIdx = idx;
+                    worstScore = conflictCount[idx];
+                }
+            }
+
+            sol.ForceSetCell(worstIdx, ValueSet(numUnits, 0));
+        }
+    }
 }
