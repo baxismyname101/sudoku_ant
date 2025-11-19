@@ -19,7 +19,7 @@ def run_solver(file_path, timeout):
         )
 
         # (solver returns 1 based on your code)
-        return result.returncode == 1
+        return result.returncode == 0
 
     except Exception:
         return False
