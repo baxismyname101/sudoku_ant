@@ -18,7 +18,7 @@ def run_solver(file_path, timeout):
             text=True
         )
 
-        # RETURN TRUE IF SUCCESS (solver returns 1 based on your code)
+        # (solver returns 1 based on your code)
         return result.returncode == 1
 
     except Exception:
@@ -46,16 +46,13 @@ def main():
         for t in sudoku_types:
             prefix = type_prefix[t]
 
-            # ------------------------------
-            # Set timeout per Sudoku type
-            # ------------------------------
             if t == "9x9":
                 timeout = "5"
             elif t == "16x16":
                 timeout = "20"
             else:
                 timeout = "120"
-            # ------------------------------
+           
 
             for pct in percentages:
                 total = 0

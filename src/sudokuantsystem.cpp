@@ -94,7 +94,7 @@ bool SudokuAntSystem::Solve(const Board& puzzle, float maxTime )
 				solTime = solutionTimer.Elapsed();
 			}
 		}
-		if ((iter % 100) == 0){
+		if ((iter % 100) == 0 and iter !=0){
 			SudokuSA sa(bestSol);
 			int cost = sa.Anneal();
 			bestSol.Copy(sa.GetSolution());
@@ -107,7 +107,7 @@ bool SudokuAntSystem::Solve(const Board& puzzle, float maxTime )
 		bestPher *= (1.0f - bestEvap);
 		++iter;
 		// check timer every 100 iterations
-		if ((iter % 1000) == 0)
+		if ((iter % 100) == 0)
 		{
 			float elapsed = solutionTimer.Elapsed();
 			if ( elapsed > maxTime)
