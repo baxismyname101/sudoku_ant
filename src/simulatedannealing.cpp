@@ -10,7 +10,7 @@ int SudokuSA::Anneal()
 {
     FillEmptyCells();
     // cout << "\n" << sol.AsString(true);
-    double coolingRate = 0.995;
+    double coolingRate = 0.95;
     double stoppingTemp = 0.0001;
     double temp = 1;
     int currentCost = ComputeCost();
@@ -32,40 +32,44 @@ int SudokuSA::Anneal()
     
 
     while(temp > stoppingTemp){
-        cycles = cycles+1;
-        int origCost = currentCost;
-        currentSol.Copy(sol);
-        
-        int newCost = TryRandomSwap();
-        int delta = newCost - currentCost;
-        if(delta <= 0){
-            moves = moves+1;
-            currentCost = newCost;
-            if (currentCost < bestCost){
-                bestSol.Copy(sol);
-                bestCost = currentCost;
-                if (currentCost == 0){
-                    cout << "\n" << sol.AsString(true);
-                    return 0;
+        for (int i = 0; i < 5; i++){
+            int origCost = currentCost;
+            currentSol.Copy(sol);
+            
+            int newCost = TryRandomSwap();
+            int delta = newCost - currentCost;
+            if(delta <= 0){
+                moves = moves+1;
+                currentCost = newCost;
+                if (currentCost < bestCost){
+                    bestSol.Copy(sol);
+                    bestCost = currentCost;
+                    if (currentCost == 0){
+                        cout << "\n" << sol.AsString(true);
+                        return 0;
+                    }
+                }
+                
+            }
+            else{
+                acceptanceProbability = exp(-delta / temp);
+                double rnd = (double) rand() / RAND_MAX;
+                if (rnd < acceptanceProbability){
+                    moves = moves+1;
+                    currentCost = newCost;
+                }
+                else{
+                    sol.Copy(currentSol);
                 }
             }
             
+            // cout << "Temperature = " + to_string(temp) + "; "+ to_string(origCost) + " to " + to_string(currentCost);
+            if (currentCost > worst)
+                worst = currentCost;
         }
-        else{
-            acceptanceProbability = exp(-delta / temp);
-            double rnd = (double) rand() / RAND_MAX;
-            if (rnd < acceptanceProbability){
-                moves = moves+1;
-                currentCost = newCost;
-            }
-            else{
-                sol.Copy(currentSol);
-            }
-        }
+        
+        cycles = cycles+1;
         temp = temp* coolingRate;
-        // cout << "Temperature = " + to_string(temp) + "; "+ to_string(origCost) + " to " + to_string(currentCost);
-        if (currentCost > worst)
-            worst = currentCost;
         if (temp < stoppingTemp){
             cout <<to_string(currentCost) + " Worst: " + to_string(worst) + " Moves: " + to_string(moves) + " Cycles: " + to_string(cycles) +".\n ";
         }
@@ -205,57 +209,109 @@ void SudokuSA::FillEmptyCells()
 int SudokuSA::TryRandomSwap()
 {
     int numCells = sol.CellCount();
-    int numUnits = sol.GetNumUnits();      
+    int numUnits = sol.GetNumUnits();
     int oldCost = ComputeCost();
 
-    std::vector<int> nonFixedIndices;
-    nonFixedIndices.reserve(numCells);
+    // ---------------------------------------------------------
+    // 1) Precompute which rows/cols have duplicates (among assigned values)
+    // ---------------------------------------------------------
+    std::vector<bool> rowHasDup(numUnits, false);
+    std::vector<bool> colHasDup(numUnits, false);
 
-    // Collect only non-fixed cells
-    for (int i = 0; i < numCells; i++)
+    // Rows
+    for (int row = 0; row < numUnits; ++row)
     {
-
-        if (!sol.IsClue(i))   // <-- fixed cells are not allowed to move
-            nonFixedIndices.push_back(i);
+        std::unordered_set<int> seen;
+        bool dup = false;
+        for (int c = 0; c < numUnits; ++c)
+        {
+            int idx = sol.RowCell(row, c);
+            const ValueSet &cell = sol.GetCell(idx);
+            if (!cell.Fixed()) continue; // skip unassigned
+            int v = cell.Index();
+            if (seen.count(v)) { dup = true; break; }
+            seen.insert(v);
+        }
+        rowHasDup[row] = dup;
     }
 
-    if (nonFixedIndices.size() < 2)
-        return oldCost; // nothing to swap
+    // Columns
+    for (int col = 0; col < numUnits; ++col)
+    {
+        std::unordered_set<int> seen;
+        bool dup = false;
+        for (int r = 0; r < numUnits; ++r)
+        {
+            int idx = sol.ColCell(col, r);
+            const ValueSet &cell = sol.GetCell(idx);
+            if (!cell.Fixed()) continue; // skip unassigned
+            int v = cell.Index();
+            if (seen.count(v)) { dup = true; break; }
+            seen.insert(v);
+        }
+        colHasDup[col] = dup;
+    }
 
-    // Random engine
+    // ---------------------------------------------------------
+    // 2) Collect non-clue cells that lie in a duplicate row or column
+    // ---------------------------------------------------------
+    std::vector<int> conflictedCells;
+    conflictedCells.reserve(numCells);
+
+    for (int idx = 0; idx < numCells; ++idx)
+    {
+        if (sol.IsClue(idx)) continue; // don't move clues
+
+        int row = sol.RowForCell(idx);
+        int col = sol.ColForCell(idx);
+
+        if (rowHasDup[row] || colHasDup[col])
+            conflictedCells.push_back(idx);
+    }
+
+    if (conflictedCells.empty())
+        return oldCost; // nothing conflict-related to try
+
+    // ---------------------------------------------------------
+    // 3) Choose first cell uniformly from conflictedCells
+    // ---------------------------------------------------------
     static std::mt19937 gen(std::random_device{}());
-    std::uniform_int_distribution<> dist1(0, nonFixedIndices.size() - 1);
+    std::uniform_int_distribution<> dist1(0, static_cast<int>(conflictedCells.size()) - 1);
+    int idx1 = conflictedCells[dist1(gen)];
 
-    // Pick first random non-fixed cell
-    int idx1 = nonFixedIndices[dist1(gen)];
+    // ---------------------------------------------------------
+    // 4) Build candidate partners inside the same box (non-clue)
+    // ---------------------------------------------------------
+    int box = sol.BoxForCell(idx1);
+    std::vector<int> sameBox;
+    sameBox.reserve(numUnits);
 
-    // Find its block
-    int block = sol.BoxForCell(idx1);
-
-    // Collect all non-fixed cells in the same block
-    std::vector<int> sameBlock;
-    for (int cell : nonFixedIndices)
+    for (int pos = 0; pos < numUnits; ++pos)
     {
-        if (sol.BoxForCell(cell) == block && cell != idx1)
-            sameBlock.push_back(cell);
+        int idx = sol.BoxCell(box, pos);
+        if (idx == idx1) continue;
+        if (sol.IsClue(idx)) continue;
+        sameBox.push_back(idx);
     }
 
-    if (sameBlock.empty())
-        return oldCost; // no valid swap partner in block
+    if (sameBox.empty())
+        return oldCost; // no available partner in box
 
-    // Pick second candidate from same block
-    std::uniform_int_distribution<> dist2(0, sameBlock.size() - 1);
-    int idx2 = sameBlock[dist2(gen)];
+    std::uniform_int_distribution<> dist2(0, static_cast<int>(sameBox.size()) - 1);
+    int idx2 = sameBox[dist2(gen)];
 
-    // Swap values
-    ValueSet cell1 = sol.GetCell(idx1);
-    ValueSet cell2 = sol.GetCell(idx2);
+    // ---------------------------------------------------------
+    // 5) Swap values and return new cost
+    // ---------------------------------------------------------
+    ValueSet v1 = sol.GetCell(idx1);
+    ValueSet v2 = sol.GetCell(idx2);
 
-    sol.ForceSetCell(idx1, cell2);
-    sol.ForceSetCell(idx2, cell1);
+    sol.ForceSetCell(idx1, v2);
+    sol.ForceSetCell(idx2, v1);
 
     return ComputeCost();
 }
+
 
 void SudokuSA::CleanDuplicates()
 {

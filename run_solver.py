@@ -34,7 +34,7 @@ def main():
         "25x25": "inst25x25"
     }
 
-    percentages = range(40, 51, 5) # range(0, 101, 5)
+    percentages = range(45, 46, 5) # range(0, 101, 5)
     instances = range(0, 100)
 
     output_file = "sudoku_results.csv"
