@@ -7,5 +7,6 @@ class SudokuSolver
 public:
 	virtual bool Solve(const Board& puzzle, float maxTime) = 0;
 	virtual float GetSolutionTime() = 0;
+	virtual int GetCycles() = 0;
 	virtual const Board& GetSolution() = 0;
 };

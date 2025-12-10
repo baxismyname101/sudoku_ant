@@ -16,7 +16,8 @@ public:
     void FillEmptyCells();
     Board GetSolution(){return sol;}
 private:
-    int TryRandomSwap();
+    int TryRandomSwap(int oldCost);
     void CleanDuplicates();
+    int LocalConflicts(int idx);
     
 }; 

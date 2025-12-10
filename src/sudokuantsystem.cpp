@@ -45,7 +45,7 @@ void SudokuAntSystem::LocalPheromoneUpdate(int iCell, int iChoice)
 bool SudokuAntSystem::Solve(const Board& puzzle, float maxTime )
 {
 	solutionTimer.Reset();
-	int iter = 0;
+	iter = 0;
 	bool solved = false;
 	bestPher = 0.0f;
 	int curBestAnt = 0;
@@ -106,6 +106,7 @@ bool SudokuAntSystem::Solve(const Board& puzzle, float maxTime )
 		UpdatePheromone();
 		bestPher *= (1.0f - bestEvap);
 		++iter;
+
 		// check timer every 100 iterations
 		if ((iter % 100) == 0)
 		{
@@ -115,6 +116,7 @@ bool SudokuAntSystem::Solve(const Board& puzzle, float maxTime )
 				break;
 			}
 		}
+		
 	}
 	ClearPheromone();
 	return solved;

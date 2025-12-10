@@ -10,9 +10,9 @@ int SudokuSA::Anneal()
 {
     FillEmptyCells();
     // cout << "\n" << sol.AsString(true);
-    double coolingRate = 0.95;
-    double stoppingTemp = 0.0001;
-    double temp = 1;
+    double coolingRate = 0.995;
+    double stoppingTemp = 0.01;
+    double temp = 1.5;
     int currentCost = ComputeCost();
     int worst = 0;
     int moves = 0;
@@ -28,15 +28,15 @@ int SudokuSA::Anneal()
     bestSol.Copy(sol);
     bestCost = currentCost;
 
-    cout << "\nFrom " + to_string(bestCost) + " to ";
+    // cout << "\nFrom " + to_string(bestCost) + " to ";
     
 
     while(temp > stoppingTemp){
-        for (int i = 0; i < 5; i++){
+        for (int i = 0; i < 1; i++){
             int origCost = currentCost;
             currentSol.Copy(sol);
             
-            int newCost = TryRandomSwap();
+            int newCost = TryRandomSwap(origCost);
             int delta = newCost - currentCost;
             if(delta <= 0){
                 moves = moves+1;
@@ -45,7 +45,7 @@ int SudokuSA::Anneal()
                     bestSol.Copy(sol);
                     bestCost = currentCost;
                     if (currentCost == 0){
-                        cout << "\n" << sol.AsString(true);
+                        // cout << "\n" << sol.AsString(true);
                         return 0;
                     }
                 }
@@ -71,7 +71,7 @@ int SudokuSA::Anneal()
         cycles = cycles+1;
         temp = temp* coolingRate;
         if (temp < stoppingTemp){
-            cout <<to_string(currentCost) + " Worst: " + to_string(worst) + " Moves: " + to_string(moves) + " Cycles: " + to_string(cycles) +".\n ";
+            // cout <<to_string(currentCost) + " Worst: " + to_string(worst) + " Moves: " + to_string(moves) + " Cycles: " + to_string(cycles) +".\n ";
         }
         
         
@@ -206,110 +206,127 @@ void SudokuSA::FillEmptyCells()
 
 
 
-int SudokuSA::TryRandomSwap()
+int SudokuSA::TryRandomSwap(int oldCost)
 {
-    int numCells = sol.CellCount();
     int numUnits = sol.GetNumUnits();
-    int oldCost = ComputeCost();
 
-    // ---------------------------------------------------------
-    // 1) Precompute which rows/cols have duplicates (among assigned values)
-    // ---------------------------------------------------------
+    // Identify conflict cells same as before
+    std::vector<int> conflictedCells;
+    conflictedCells.reserve(sol.CellCount());
+
     std::vector<bool> rowHasDup(numUnits, false);
     std::vector<bool> colHasDup(numUnits, false);
 
-    // Rows
+    // Detect conflict rows
     for (int row = 0; row < numUnits; ++row)
     {
         std::unordered_set<int> seen;
         bool dup = false;
         for (int c = 0; c < numUnits; ++c)
         {
-            int idx = sol.RowCell(row, c);
-            const ValueSet &cell = sol.GetCell(idx);
-            if (!cell.Fixed()) continue; // skip unassigned
-            int v = cell.Index();
-            if (seen.count(v)) { dup = true; break; }
-            seen.insert(v);
+            int idx = sol.RowCell(row,c);
+            if (!sol.GetCell(idx).Fixed()) continue;
+            int v = sol.GetCell(idx).Index();
+            if (!seen.insert(v).second) { dup = true; break; }
         }
         rowHasDup[row] = dup;
     }
 
-    // Columns
+    // Detect conflict columns
     for (int col = 0; col < numUnits; ++col)
     {
         std::unordered_set<int> seen;
         bool dup = false;
         for (int r = 0; r < numUnits; ++r)
         {
-            int idx = sol.ColCell(col, r);
-            const ValueSet &cell = sol.GetCell(idx);
-            if (!cell.Fixed()) continue; // skip unassigned
-            int v = cell.Index();
-            if (seen.count(v)) { dup = true; break; }
-            seen.insert(v);
+            int idx = sol.ColCell(col,r);
+            if (!sol.GetCell(idx).Fixed()) continue;
+            int v = sol.GetCell(idx).Index();
+            if (!seen.insert(v).second) { dup = true; break; }
         }
         colHasDup[col] = dup;
     }
 
-    // ---------------------------------------------------------
-    // 2) Collect non-clue cells that lie in a duplicate row or column
-    // ---------------------------------------------------------
-    std::vector<int> conflictedCells;
-    conflictedCells.reserve(numCells);
-
-    for (int idx = 0; idx < numCells; ++idx)
+    // Collect swap candidates
+    for (int idx = 0; idx < sol.CellCount(); ++idx)
     {
-        if (sol.IsClue(idx)) continue; // don't move clues
-
-        int row = sol.RowForCell(idx);
-        int col = sol.ColForCell(idx);
-
-        if (rowHasDup[row] || colHasDup[col])
+        if (sol.IsClue(idx)) continue;
+        if (rowHasDup[sol.RowForCell(idx)] ||
+            colHasDup[sol.ColForCell(idx)])
+        {
             conflictedCells.push_back(idx);
+        }
     }
 
     if (conflictedCells.empty())
-        return oldCost; // nothing conflict-related to try
+        return oldCost;
 
-    // ---------------------------------------------------------
-    // 3) Choose first cell uniformly from conflictedCells
-    // ---------------------------------------------------------
     static std::mt19937 gen(std::random_device{}());
-    std::uniform_int_distribution<> dist1(0, static_cast<int>(conflictedCells.size()) - 1);
-    int idx1 = conflictedCells[dist1(gen)];
+    std::uniform_int_distribution<> d1(0, conflictedCells.size()-1);
 
-    // ---------------------------------------------------------
-    // 4) Build candidate partners inside the same box (non-clue)
-    // ---------------------------------------------------------
+    int idx1 = conflictedCells[d1(gen)];
     int box = sol.BoxForCell(idx1);
-    std::vector<int> sameBox;
-    sameBox.reserve(numUnits);
 
+    // Pick partner in same box
+    std::vector<int> same;
     for (int pos = 0; pos < numUnits; ++pos)
     {
-        int idx = sol.BoxCell(box, pos);
-        if (idx == idx1) continue;
-        if (sol.IsClue(idx)) continue;
-        sameBox.push_back(idx);
+        int idx = sol.BoxCell(box,pos);
+        if (!sol.IsClue(idx) && idx!=idx1)
+            same.push_back(idx);
     }
+    if (same.empty())
+        return oldCost;
 
-    if (sameBox.empty())
-        return oldCost; // no available partner in box
+    std::uniform_int_distribution<> d2(0, same.size()-1);
+    int idx2 = same[d2(gen)];
 
-    std::uniform_int_distribution<> dist2(0, static_cast<int>(sameBox.size()) - 1);
-    int idx2 = sameBox[dist2(gen)];
+    // Compute local conflicts BEFORE swap
+    int before =
+        LocalConflicts(idx1) +
+        LocalConflicts(idx2);
 
-    // ---------------------------------------------------------
-    // 5) Swap values and return new cost
-    // ---------------------------------------------------------
+    // Swap
     ValueSet v1 = sol.GetCell(idx1);
     ValueSet v2 = sol.GetCell(idx2);
+    sol.ForceSetCell(idx1,v2);
+    sol.ForceSetCell(idx2,v1);
 
-    sol.ForceSetCell(idx1, v2);
-    sol.ForceSetCell(idx2, v1);
+    // Compute local conflicts AFTER swap
+    int after =
+        LocalConflicts(idx1) +
+        LocalConflicts(idx2);
 
-    return ComputeCost();
+    return oldCost + (after - before);
+}
+
+int SudokuSA::LocalConflicts(int idx)
+{
+    int numUnits = sol.GetNumUnits();
+    int row = sol.RowForCell(idx);
+    int col = sol.ColForCell(idx);
+    int val = sol.GetCell(idx).Index();
+    int conflicts = 0;
+
+    // Check row duplicates
+    for(int c = 0; c < numUnits; c++){
+        int id = sol.RowCell(row,c);
+        if(id != idx && sol.GetCell(id).Fixed()){
+            if(sol.GetCell(id).Index() == val)
+                conflicts++;
+        }
+    }
+
+    // Check column duplicates
+    for(int r = 0; r < numUnits; r++){
+        int id = sol.ColCell(col,r);
+        if(id != idx && sol.GetCell(id).Fixed()){
+            if(sol.GetCell(id).Index() == val)
+                conflicts++;
+        }
+    }
+
+    return conflicts;
 }
 
 

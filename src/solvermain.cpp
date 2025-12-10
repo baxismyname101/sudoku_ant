@@ -157,6 +157,7 @@ int main( int argc, char *argv[] )
 	success = solver->Solve(board, (float)timeOutSecs );
 	solution = solver->GetSolution();
 	solTime = solver->GetSolutionTime();
+	int iter = solver->GetCycles();
 
 	// sanity chack the solution:
 	if ( success && !board.CheckSolution(solution) )
@@ -170,7 +171,7 @@ int main( int argc, char *argv[] )
 		success = false;
 	}
 	if ( !verbose )
-		cout << !success << endl << solTime << endl;
+		cout << !success << endl << solTime << endl << iter <<endl;
 	else
 	{
 		if ( !success )
